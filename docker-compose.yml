@@ -1,0 +1,12 @@
+services:
+  api-proxy:
+    image: ${IMAGE_TAG}
+    build:
+      context: .
+    volumes:
+      - ./ssh:/ssh:ro
+    ports:
+      - "${LOCAL_PORT}:80"
+    env_file:
+      - .env
+    restart: always
