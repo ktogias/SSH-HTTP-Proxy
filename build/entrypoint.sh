@@ -7,6 +7,8 @@ set -e
 SSH_KEY_PATH=/ssh/id_${SSH_KEY_SUFFIX}
 SSH_KEY_PUB_PATH=/ssh/id_${SSH_KEY_SUFFIX}.pub
 SSH_KNOWN_HOSTS=/ssh/known_hosts
+REMOTE_COMMAND_DIR="/remote_command"
+REMOTE_COMMAND_SCRIPT="run.sh"
 
 # Check if the SSH key files exist
 if [ ! -f "${SSH_KEY_PATH}" ] || [ ! -f "${SSH_KEY_PUB_PATH}" ]; then
@@ -41,8 +43,33 @@ run_ssh_tunnel() {
     -i /root/.ssh/id || true
 }
 
+# Function to run remote command
+run_remote_command() {
+  if [ -f "${REMOTE_COMMAND_DIR}/${REMOTE_COMMAND_SCRIPT}" ]; then
+    echo "Found ${REMOTE_COMMAND_SCRIPT}, copying ${REMOTE_COMMAND_DIR}/ to remote host and executing..."
+
+    # Copy the whole /remote_command dir to the remote server's /tmp
+    scp -i /root/.ssh/id \
+      -o ProxyCommand="ssh -i /root/.ssh/id -W %h:%p ${SSH_USER}@${SSH_HOST}" \
+      -r "${REMOTE_COMMAND_DIR}" "${SITE_SSH_USER}@${SITE_IP}:/tmp/"
+
+    # Run the script remotely
+    ssh -i /root/.ssh/id \
+      -o ProxyCommand="ssh -i /root/.ssh/id -W %h:%p ${SSH_USER}@${SSH_HOST}" \
+      "${SITE_SSH_USER}@${SITE_IP}" "sh /tmp/${REMOTE_COMMAND_DIR}/${REMOTE_COMMAND_SCRIPT}"
+  else
+    echo "No ${REMOTE_COMMAND_SCRIPT} found in ${REMOTE_COMMAND_DIR}. Skipping remote command."
+    return 0
+  fi
+}
+
 # Run SSH tunnel and restart Nginx if SSH tunnel fails
 while true; do
+  if ! run_remote_command; then
+    echo "Remote command failed. Skipping tunnel setup. Retrying in 5 seconds..."
+    sleep 5
+    continue
+  fi
   echo "Establishing SSH tunnel"
   run_ssh_tunnel
   echo "SSH tunnel failed. Restarting in 5 seconds..."

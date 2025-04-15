@@ -5,6 +5,7 @@ services:
       context: .
     volumes:
       - ./ssh:/ssh:ro
+      - ./remote_command:/remote_command:ro
     ports:
       - "${LOCAL_PORT}:80"
     env_file:
