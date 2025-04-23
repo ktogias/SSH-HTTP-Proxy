@@ -36,11 +36,31 @@ nginx -g 'daemon on;'
 
 # Function to run SSH tunnel
 run_ssh_tunnel() {
-  ssh \
-    -N \
+  echo "Establishing SSH tunnel..."
+
+  # Create or truncate the log file
+  touch /tmp/ssh_tunnel.log
+
+  ssh -N \
     -L "10000:${SITE_IP}:${SITE_PORT}" \
+    -o ConnectTimeout=10 \
+    -o ExitOnForwardFailure=yes \
     "${SSH_USER}"@"${SSH_HOST}" \
-    -i /root/.ssh/id || true
+    -i /root/.ssh/id 2>&1 | tee /tmp/ssh_tunnel.log &
+
+  TUNNEL_PID=$!
+
+  while kill -0 "$TUNNEL_PID" >/dev/null 2>&1; do
+    if grep -qE "connect failed: Connection timed out|Broken pipe" /tmp/ssh_tunnel.log; then
+      echo "Detected SSH tunnel failure due to timeout or broken pipe."
+      kill "$TUNNEL_PID"
+      wait "$TUNNEL_PID" 2>/dev/null
+      return 1
+    fi
+    sleep 1
+  done
+
+  return 1
 }
 
 # Function to run remote command
@@ -70,8 +90,9 @@ while true; do
     sleep 5
     continue
   fi
-  echo "Establishing SSH tunnel"
-  run_ssh_tunnel
-  echo "SSH tunnel failed. Restarting in 5 seconds..."
-  sleep 5
+
+  if ! run_ssh_tunnel; then
+    echo "SSH tunnel failed. Restarting in 5 seconds..."
+    sleep 5
+  fi
 done
