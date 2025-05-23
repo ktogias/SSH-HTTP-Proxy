@@ -11,3 +11,26 @@ services:
     env_file:
       - .env
     restart: always
+    labels:
+      - autoheal=true
+    healthcheck:
+      test: >
+        sh -c '
+        ssh -i /root/.ssh/id \
+          -o ConnectTimeout=5 \
+          -o StrictHostKeyChecking=no \
+          -o ProxyCommand="ssh -i /root/.ssh/id -W %h:%p ${SSH_USER}@${SSH_HOST}" \
+          "${SITE_SSH_USER}@${SITE_IP}" \
+          "curl -sf --connect-timeout 3 --max-time 5 http://localhost:${SITE_PORT}"'
+      interval: ${HEALTH_CHECK_INTERVAL}
+      timeout: ${HEALTH_CHECK_TIMEOUT}
+      retries: ${HEALTH_CHECK_RETRIES}
+      start_period: ${HEALTH_CHECK_START_PERIOD}
+
+  autoheal:
+    image: willfarrell/autoheal
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - AUTOHEAL_INTERVAL=10
